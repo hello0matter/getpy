@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Application Logs</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+    h1 { color: #2c3e50; text-align: center; }
+    .log-table { width: 90%; margin: 20px auto; border-collapse: collapse; box-shadow: 0 2px 15px rgba(0,0,0,0.1); background-color: #fff; }
+    .log-table th, .log-table td { padding: 12px 15px; border: 1px solid #ddd; text-align: left; }
+    .log-table th { background-color: #4CAF50; color: white; }
+    .log-table tr:nth-child(even) { background-color: #f2f2f2; }
+    .log-table tr:hover { background-color: #ddd; }
+    .log-type-Hijack { color: #e74c3c; font-weight: bold; }
+    .log-type-Global { color: #3498db; }
+    .log-type-System { color: #95a5a6; }
+    pre { background-color: #ecf0f1; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+  </style>
+</head>
+<body>
+
+<h1>Application Interaction Logs</h1>
+
+<table class="log-table">
+  <thead>
+  <tr>
+    <th>ID</th>
+    <th>Log Type</th>
+    <th>Message</th>
+    <th>Additional Data</th>
+    <th>Event Timestamp</th>
+    <th>Received At (Server Time)</th>
+  </tr>
+  </thead>
+  <tbody>
+  {% if logs %}
+  {% for log in logs %}
+  <tr>
+    <td>{{ log.id }}</td>
+    <td>
+      <span class="log-type-{{ log.log_type }}">{{ log.log_type }}</span>
+    </td>
+    <td>{{ log.message }}</td>
+    <td>
+      {% if log.data %}
+      <pre>{{ log.data | tojson(indent=2) }}</pre>
+      {% else %}
+      N/A
+      {% endif %}
+    </td>
+    <td>{{ log.timestamp }}</td>
+    <td>{{ log.received_at }}</td>
+  </tr>
+  {% endfor %}
+  {% else %}
+  <tr>
+    <td colspan="6" style="text-align: center;">No logs found in the database.</td>
+  </tr>
+  {% endif %}
+  </tbody>
+</table>
+
+</body>
+</html>

